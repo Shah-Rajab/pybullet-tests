@@ -149,6 +149,7 @@ class WalkingForward(gym.Env):
 
 
         # TODO reset joint state
+        p.resetBasePositionAndOrientation(self.soccerbotUid, [0, 0, self.STANDING_HEIGHT], [0., 0., 0., 1.])
 
         #p.resetJointStates(self.soccerbotUid, list(range(0, 18, 1)), 0)
         standing_poses = [0] * self.JOINT_DIM
