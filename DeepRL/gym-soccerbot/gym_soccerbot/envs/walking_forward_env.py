@@ -57,7 +57,8 @@ class WalkingForward(gym.Env):
         return [seed]
 
     def _imu(self):
-        [lin_vel, ang_vel] = pb.getBaseVelocity(self.soccerbotUid)
+        p = self._p
+        [lin_vel, ang_vel] = p.getBaseVelocity(self.soccerbotUid)
         lin_vel = np.array(lin_vel, dtype = np.float32)
         lin_acc = (lin_vel - self.prev_lin_vel) / self.timeStep
         ang_vel = np.array(ang_vel, dtype=np.float32)
@@ -66,19 +67,22 @@ class WalkingForward(gym.Env):
         return np.concatenate((lin_acc, ang_vel))
 
     def _global_pos(self):
-        pos, _ = pb.getBasePositionAndOrientation(self.soccerbotUid)
+        p = self._p
+        pos, _ = p.getBasePositionAndOrientation(self.soccerbotUid)
         return np.array(pos, dtype=np.float32)
 
     def _feet(self):
         pass
 
     def step(self, action):
-
-        pb.setJointMotorControlArray(bodyIndex=self.soccerbotUid, controlMode=pb.POSITION_CONTROL,
+        if self._renders == True:
+            sleep(self.timeStep)
+        p = self._p
+        p.setJointMotorControlArray(bodyIndex=self.soccerbotUid, controlMode=pb.POSITION_CONTROL,
                                      jointIndices=list(range(0, 18, 1)), targetPositions=action)
-        pb.stepSimulation()
+        p.stepSimulation()
         imu = self._imu()
-        joint_states = pb.getJointStates(self.soccerbotUid, list(range(0, 18, 1)))
+        joint_states = p.getJointStates(self.soccerbotUid, list(range(0, 18, 1)))
         joints_pos = np.array([state[0] for state in joint_states], dtype=np.float32)
 
         """
@@ -114,6 +118,7 @@ class WalkingForward(gym.Env):
         if self._physics_client_id < 0:
             if self._renders:
                 self._p = bc.BulletClient(connection_mode=pb.GUI)
+                self._p.configureDebugVisualizer(pb.COV_ENABLE_RENDERING, 1)
             else:
                 self._p = bc.BulletClient()
             self._physics_client_id = self._p._client
@@ -123,23 +128,23 @@ class WalkingForward(gym.Env):
             # load ramp
 
             # load soccerbot
-            self.soccerbotUid = pb.loadURDF("/home/shahryar/PycharmProjects/DeepRL/gym-soccerbot/gym_soccerbot/soccer_description/models/soccerbot_stl.urdf", useFixedBase=False,
+            self.soccerbotUid = p.loadURDF("/home/shahryar/PycharmProjects/DeepRL/gym-soccerbot/gym_soccerbot/soccer_description/models/soccerbot_stl.urdf", useFixedBase=False,
                                             basePosition=[0, 0, self.STANDING_HEIGHT],
                                             baseOrientation=[0., 0., 0., 1.],
                                             flags=pb.URDF_USE_INERTIA_FROM_FILE)
                             # |p.URDF_USE_SELF_COLLISION|p.URDF_USE_SELF_COLLISION_EXCLUDE_PARENT)
 
             urdfRootPath = pybullet_data.getDataPath()
-            planeUid = pb.loadURDF(os.path.join(urdfRootPath, "plane.urdf"), basePosition=[0, 0, 0])
+            planeUid = p.loadURDF(os.path.join(urdfRootPath, "plane.urdf"), basePosition=[0, 0, 0])
 
             # TODO change dynamics ...
 
             # TODO change timestep ...
             self.timeStep = 1./240
-            pb.setTimeStep(self.timeStep)
+            p.setTimeStep(self.timeStep)
 
-            pb.setGravity(0, 0, -9.81)
-            pb.setRealTimeSimulation(0)  # To manually step simulation later
+            p.setGravity(0, 0, -9.81)
+            p.setRealTimeSimulation(0)  # To manually step simulation later
         p = self._p
 
 
@@ -148,19 +153,19 @@ class WalkingForward(gym.Env):
         #p.resetJointStates(self.soccerbotUid, list(range(0, 18, 1)), 0)
         standing_poses = [0] * self.JOINT_DIM
         for i in range(18):
-            pb.resetJointState(self.soccerbotUid, i, standing_poses[i])
+            p.resetJointState(self.soccerbotUid, i, standing_poses[i])
 
         # TODO set state???
 
         # TODO get observation
         imu = self._imu()
-        joint_states = pb.getJointStates(self.soccerbotUid, list(range(0, 18, 1)))
+        joint_states = p.getJointStates(self.soccerbotUid, list(range(0, 18, 1)))
         joints_pos = np.array([state[0] for state in joint_states], dtype=np.float32)
         start_pos = np.array([0, 0, self.STANDING_HEIGHT], dtype=np.float32)
         observation = np.concatenate((joints_pos, imu, start_pos))
 
         #pb.resetSimulation()
-        # pb.configureDebugVisualizer(pb.COV_ENABLE_RENDERING, 0)
+
         # pb.configureDebugVisualizer(pb.COV_ENABLE_RENDERING, 1)
         """
         From core.py in gym:
@@ -174,12 +179,12 @@ class WalkingForward(gym.Env):
             self._renders = True
         if mode != "rgb_array":
             return np.array([])
-        base_pos, orn = self.pb.getBasePositionAndOrientation(self.soccerbotUid)
+        base_pos, orn = self._p.getBasePositionAndOrientation(self.soccerbotUid)
         base_pos = np.asarray(base_pos)
         # TODO tune parameters
         # track the position
         base_pos[1] += 0.3
-        rpy = self.pb.getEulerFromQuaternion(orn)  # rpy, in radians
+        rpy = self._p.getEulerFromQuaternion(orn)  # rpy, in radians
         rpy = 180 / np.pi * np.asarray(rpy)  # convert rpy in degrees
 
         self._cam_dist = 3
